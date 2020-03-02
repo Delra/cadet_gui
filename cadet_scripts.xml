@@ -1,0 +1,1709 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE MudletPackage>
+<MudletPackage version="1.001">
+	<ScriptPackage>
+		<ScriptGroup isActive="yes" isFolder="yes">
+			<name>cadet_gui</name>
+			<packageName></packageName>
+			<script>-------------------------------------------------
+--         Put your Lua functions here.        --
+--                                             --
+-- Note that you can also use external scripts --
+-------------------------------------------------
+</script>
+			<eventHandlerList />
+			<ScriptGroup isActive="yes" isFolder="yes">
+				<name>EMCO-1.3</name>
+				<packageName>EMCO-1.3</packageName>
+				<script></script>
+				<eventHandlerList />
+				<ScriptGroup isActive="yes" isFolder="yes">
+					<name>EMCO</name>
+					<packageName></packageName>
+					<script></script>
+					<eventHandlerList />
+					<Script isActive="yes" isFolder="no">
+						<name>EMCO</name>
+						<packageName></packageName>
+						<script>--- Embeddable Multi Console Object.
+-- This is essentially YATCO, but with some tweaks, updates, and it returns an object
+-- similar to Geyser so that you can a.) have multiple of them and b.) easily embed it
+-- into your existing UI as you would any other Geyser element.
+-- @module EMCO
+EMCO = Geyser.Container:new({
+  name = "TabbedConsoleClass",
+})
+
+function EMCO:readYATCO()
+  local config
+  if demonnic and demonnic.chat and demonnic.chat.config then 
+    config = demonnic.chat.config
+  else
+    cecho("&lt;white&gt;(&lt;blue&gt;EMCO&lt;white&gt;)&lt;reset&gt; Could not find demonnic.chat.config, nothing to convert\n")
+    return
+  end
+  local constraints = "EMCO:new({\n"
+  constraints = string.format("%s  x = %d,\n", constraints, demonnic.chat.container.get_x())
+  constraints = string.format("%s  y = %d,\n", constraints, demonnic.chat.container.get_y())
+  constraints = string.format("%s  width = %d,\n", constraints, demonnic.chat.container.get_width())
+  constraints = string.format("%s  height = %d,\n", constraints, demonnic.chat.container.get_height())
+  if config.timestamp then
+    constraints = string.format("%s  timestamp = true,\n  timestampFormat = \"%s\",\n", constraints, config.timestamp)
+  else
+    constraints = string.format("%s  timestamp = false,\n", constraints)
+  end
+  if config.timestampColor then
+    constraints = string.format("%s  customTimestampColor = true,\n", constraints)
+  else
+    constraints = string.format("%s  customTimestampColor = false,\n", constraints)
+  end
+  if config.timestampFG then
+    constraints = string.format("%s  timestampFGColor = \"%s\",\n", constraints, config.timestampFG)
+  end
+  if config.timestampBG then
+    constraints = string.format("%s  timestampBGColor = \"%s\",\n", constraints, config.timestampBG)
+  end
+  if config.channels then
+    local channels = "consoles = {\n"
+    for _,channel in ipairs(config.channels) do
+      if _ == #config.channels then
+        channels = string.format("%s    \"%s\"", channels, channel)
+      else
+        channels = string.format("%s    \"%s\",\n", channels, channel)
+      end
+    end
+    channels = string.format("%s\n  },\n", channels)
+    constraints = string.format([[%s  %s]], constraints, channels)
+  end
+  if config.Alltab then
+    constraints = string.format("%s  allTab = true,\n", constraints)
+    constraints = string.format("%s  allTabName = \"%s\",\n", constraints, config.Alltab)
+  else
+    constraints = string.format("%s  allTab = false,\n", constraints)
+  end
+  if config.Maptab and config.Maptab ~= "" then
+    constraints = string.format("%s  mapTab = true,\n", constraints)
+    constraints = string.format("%s  mapTabName = \"%s\",\n", constraints, config.Maptab)
+  else
+    constraints = string.format("%s  mapTab = false,\n", constraints)
+  end
+  constraints = string.format("%s  blink = %s,\n", constraints, tostring(config.blink))
+  constraints = string.format("%s  blinkFromAll = %s,\n", constraints, tostring(config.blinkFromAll))
+  if config.fontSize then
+    constraints = string.format("%s  fontSize = %d,\n", constraints, config.fontSize)
+  end
+  constraints = string.format("%s  preserveBackground = %s,\n", constraints, tostring(config.preserveBackground))
+  constraints = string.format("%s  gag = %s,\n", constraints, tostring(config.gag))
+  constraints = string.format("%s  activeTabBGColor = \"&lt;%s,%s,%s&gt;\",\n", constraints, config.activeColors.r, config.activeColors.g, config.activeColors.b)
+  constraints = string.format("%s  inactiveTabBGColor = \"&lt;%s,%s,%s&gt;\",\n", constraints, config.inactiveColors.r, config.inactiveColors.g, config.inactiveColors.b)
+  constraints = string.format("%s  consoleColor = \"&lt;%s,%s,%s&gt;\",\n", constraints, config.windowColors.r, config.windowColors.g, config.windowColors.b)
+  constraints = string.format("%s  activeTabFGColor = \"%s\",\n", constraints, config.activeTabText)
+  constraints = string.format("%s  inactiveTabFGColor = \"%s\"", constraints, config.inactiveTabText)
+  constraints = string.format("%s\n})", constraints)
+  return constraints
+end
+
+--- Scans for the old YATCO configuration values and prints out a set of constraints to use.
+-- with EMCO to achieve the same effect. Is just the invocation
+function EMCO:miniConvertYATCO()
+  local constraints = self:readYATCO()
+  cecho("&lt;white&gt;(&lt;blue&gt;EMCO&lt;white&gt;)&lt;reset&gt; Found a YATCO config. Here are the constraints to use with EMCO(x,y,width, and height have been converted to their absolute values):\n\n")
+  echo(constraints .. "\n")
+end
+
+--- Echos to the main console a script object you can add which will fully convert YATCO to EMCO.
+-- This replaces the demonnic.chat variable with a newly created EMCO object, so that the main 
+-- functions used to place information on the consoles (append(), cecho(), etc) should continue to
+-- work in the user's triggers and events.
+function EMCO:convertYATCO()
+  local invocation = self:readYATCO()
+  local header = [[
+  &lt;white&gt;(&lt;blue&gt;EMCO&lt;white&gt;)&lt;reset&gt; Found a YATCO config. Make a new script, then copy and paste the following output into it.
+  &lt;white&gt;(&lt;blue&gt;EMCO&lt;white&gt;)&lt;reset&gt; Afterward, uninstall YATCO (you can leave YATCOConfig until you're sure everything is right) and restart Mudlet
+  &lt;white&gt;(&lt;blue&gt;EMCO&lt;white&gt;)&lt;reset&gt; If everything looks right, you can uninstall YATCOConfig. 
+
+
+-- Copy everything below this line until the next line starting with --
+demonnic = demonnic or {}
+demonnic.chat = ]]
+  cecho(string.format("%s%s\n--- End script\n", header, invocation))
+end
+
+function EMCO:checkTabPosition(position)
+  if position == nil then
+    return 0
+  end
+  return tonumber(position) or type(position)
+end
+
+function EMCO:checkTabName(tabName)
+  if not tostring(tabName) then
+    return "tabName as string expected, got" .. type(tabName)
+  end
+  tabName = tostring(tabName)
+  if table.contains(self.consoles, tabName) then
+    return "tabName must be unique, and we already have a tab named " .. tabName
+  else
+    return "clear"
+  end
+end
+
+function EMCO:ae(funcName, message)
+  error(string.format("%s: Argument Error: %s", funcName, message))
+end
+
+function EMCO:ce(funcName, message)
+  error(string.format("%s:gg Constraint Error: %s", funcName, message))
+end
+
+--- Adds a tab to the EMCO object
+-- @tparam string tabName the name of the tab to add
+-- @tparam[opt] number position position in the tab switcher to put this tab
+function EMCO:addTab(tabName, position)
+  local funcName = "EMCO:addTab(tabName, position)"
+  position = self:checkTabPosition(position)
+  if type(position) == "string" then self:ae(funcName, "position as number expected, got " .. position) end
+  local tabCheck = self:checkTabName(tabName)
+  if tabCheck ~= "clear" then self:ae(funcName, tabCheck) end
+  if position == 0 then
+    table.insert(self.consoles, tabName)
+    self:createComponentsForTab(tabName)
+  else
+    table.insert(self.consoles, position, tabName)
+    self:reset()
+  end
+end
+
+function EMCO:switchTab(tabName)
+  local oldTab = self.currentTab
+  if oldTab ~= tabName and oldTab ~= "" then 
+    self.windows[oldTab]:hide()
+    self.tabs[oldTab]:setStyleSheet(self.inactiveTabCSS)
+    self.tabs[oldTab]:setColor(self.inactiveTabBGColor)
+    self.tabs[oldTab]:echo(oldTab, self.inactiveTabFGColor, "c")
+    if self.blink then 
+      if self.allTab and tabName == self.allTabName then
+        self.tabsToBlink = {}
+      elseif self.tabsToBlink[tabName] then
+        self.tabsToBlink[tabName] = nil
+      end
+    end
+  end
+  self.tabs[tabName]:setStyleSheet(self.activeTabCSS)
+  self.tabs[tabName]:setColor(self.activeTabBGColor)
+  self.tabs[tabName]:echo(tabName, self.activeTabFGColor, "c")
+  if oldTab and self.windows[oldTab] then
+    self.windows[oldTab]:hide()
+  end
+  self.windows[tabName]:show()
+  self.currentTab = tabName
+end
+
+function EMCO:createComponentsForTab(tabName)
+  local tab = Geyser.Label:new({
+    name = string.format("%sTab%s", self.name, tabName)
+  }, self.tabBox)
+  tab:echo(tabName, self.inactiveTabFGColor, 'c')
+  -- use the inactive CSS. It's "" if unset, which is ugly, but
+  tab:setStyleSheet(self.inactiveTabCSS)
+  -- set the BGColor if set. if the CSS is set it overrides the setColor, but if it's "" then the setColor actually covers that.
+  -- and we set a default for the inactiveBGColor
+  tab:setColor(self.inactiveTabBGColor)
+  tab:setClickCallback("EMCOHelper.switchTab", nil, string.format("%s+%s",self.name, tabName))
+  self.tabs[tabName] = tab
+  local window
+  local windowConstraints = {
+    x = 1,
+    y = 1,
+    height = "-2px",
+    width = "100%",
+    name = string.format("%sWindow%s", self.name, tabName)
+  }
+  local parent = self.consoleContainer
+  if self.mapTab and tabName == self.mapTabName then
+    window = Geyser.Mapper:new(windowConstraints, parent)
+  else
+    window = Geyser.MiniConsole:new(windowConstraints, parent)
+    window:setFontSize(self.fontSize)
+    window:setColor(self.consoleColor)
+    if self.autoWrap then
+      window:enableAutoWrap()
+    else
+      window:setWrap(self.wrapAt)
+    end
+    if self.scrollbars then
+      window:enableScrollBar()
+    else
+      window:disableScrollBar()
+    end
+  end
+  self.windows[tabName] = window
+  window:hide()
+end
+
+--- resets the object, redrawing everything
+function EMCO:reset()
+  self:createContainers()
+  for _,tabName in ipairs(self.consoles) do
+    self:createComponentsForTab(tabName)
+  end
+  local default
+  if self.currentTab == "" then
+    default = self.allTabName or self.consoles[1]
+  else
+    default = self.currentTab
+  end
+  self:switchTab(default)
+end
+
+function EMCO:createContainers()
+  self.tabBoxLabel = Geyser.Label:new({
+    x=0,
+    y=0,
+    width = "100%",
+    height = tostring(tonumber(self.tabHeight) + 2) .. "px",
+    name = self.name .. "TabBoxLabel"
+  }, self)
+  self.tabBox = Geyser.HBox:new({
+    x=0,
+    y=0,
+    width = "100%",
+    height = "100%",
+    name = self.name .. "TabBox"
+  }, self.tabBoxLabel)
+  self.tabBoxLabel:setStyleSheet(self.tabBoxCSS)
+  self.tabBoxLabel:setColor(self.tabBoxColor)
+  
+  local heightPlusGap = tonumber(self.tabHeight) + tonumber(self.gap)
+  self.consoleContainer = Geyser.Label:new({
+    x = 0,
+    y = tostring(heightPlusGap) .. "px",
+    width = "100%",
+    height = "-" .. tostring(heightPlusGap) .. "px",
+    name = self.name .. "ConsoleContainer"
+  }, self)
+  self.consoleContainer:setStyleSheet(self.consoleContainerCSS)
+  self.consoleContainer:setColor(self.consoleContainerColor)
+end
+
+function EMCO:stripTimeChars(str)
+  return string.gsub(string.trim(str), '[hHmMszZaApPdy:. ]', '')
+end
+
+--- Expands boolean definitions to be more flexible.
+-- &lt;br&gt;True values are "true", "yes", "0", 0, and true
+-- &lt;br&gt;False values are "false", "no", "1", 1, false, and nil
+-- @param bool item to test for truthiness
+function EMCO:fuzzyBoolean(bool)
+  if type(bool) == "boolean" or bool == nil then
+    return bool
+  elseif tostring(bool) then
+    local truth = {
+      "yes",
+      "true",
+      "0"
+    }
+    local untruth = {
+      "no",
+      "false",
+      "1"
+    }
+    local boolstr = tostring(bool)
+    if table.contains(truth, boolstr) then
+      return true
+    elseif table.contains(untruth, boolstr) then
+      return false
+    else
+      return nil
+    end
+  else
+    return nil
+  end
+end
+
+--- enables custom colors for the timestamp, if displayed
+function EMCO:enableCustomTimestampColor()
+  self.customTimestampColor = true
+end
+
+--- disables custom colors for the timestamp, if displayed
+function EMCO:disableCustomTimestampColor()
+  self.customTimestampColor = false
+end
+
+--- enables the display of timestamps
+function EMCO:enableTimestamp()
+  self.timestamp = true
+end
+
+--- disables the display of timestamps
+function EMCO:disableTimestamp()
+  self.timestamp = false
+end
+
+--- Sets the formatting for the timestamp, if enabled
+-- @tparam string format Format string which describes the display of the timestamp. See: https://wiki.mudlet.org/w/Manual:Lua_Functions#getTime
+function EMCO:setTimestampFormat(format)
+  local funcName = "EMCO:setTimestampFormat(format)"
+  local strippedFormat = self:stripTimeChars(format)
+  if strippedFormat ~= "" then
+    self:ae(funcName, "format contains invalid time format characters. Please see https://wiki.mudlet.org/w/Manual:Lua_Functions#getTime for formatting information")
+  else
+    self.timestampFormat = format
+  end
+end
+
+--- Sets the background color for the timestamp, if customTimestampColor is enabled.
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setTimestampBGColor(color)
+  self.timestampBGColor = color
+end
+--- Sets the foreground color for the timestamp, if customTimestampColor is enabled.
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setTimestampFGColor(color)
+  self.timestampFGColor = color
+end
+
+--- Sets the 'all' tab name.
+-- &lt;br&gt;This is the name of the tab itself
+-- @tparam string allTabName name of the tab to use as the all tab. Must be a tab which exists in the object.
+function EMCO:setAllTabName(allTabName)
+  local funcName = "EMCO:setAllTabName(allTabName)"
+  local allTabNameType = type(allTabName)
+  if allTabNameType ~= "string" then self:ae(funcName, "allTabName expected as string, got" .. allTabNameType) end
+  if not table.contains(self.consoles, allTabName) then self:ae(funcName, "allTabName must be the name of one of the console tabs. Valid options are: " .. table.concat(self.containers, ",")) end
+  self.allTabName = allTabName
+end
+
+--- Enables use of the 'all' tab
+function EMCO:enableAllTab()
+  self.allTab = true
+end
+
+--- Disables use of the 'all' tab
+function EMCO:disableAllTab()
+  self.allTab = false
+end
+
+--- Enables tying the Mudlet Mapper to one of the tabs.
+-- &lt;br&gt;mapTabName must be set, or this will error. Forces a redraw of the entire object
+function EMCO:enableMapTab()
+  local funcName = "EMCO:enableMapTab()"
+  if not self.mapTabName then
+    error(funcName .. ": cannot enable the map tab, mapTabName not set. try running :setMapTabName(mapTabName) first with the name of the tab you want to bind the map to")
+  end
+  self.mapTab = true
+  self:reset()
+end
+
+--- disables binding the Mudlet Mapper to one of the tabs.
+-- &lt;br&gt;CAUTION: this may have unexpected behaviour, as you can only open one Mapper console per profile
+-- so you can't really unbind it. Binding of the Mudlet Mapper is best decided at instantiation.
+function EMCO:disableMapTab()
+  self.mapTab = false
+end
+
+--- sets the name of the tab to bind the Mudlet Map.
+-- &lt;br&gt;Forces a redraw of the object
+-- &lt;br&gt;CAUTION: Mudlet only allows one Map object to be open at one time, so if you are going to attach the map to an object
+-- you should probably do it at instantiation.
+-- @tparam string mapTabName name of the tab to connect the Mudlet Map to.
+function EMCO:setMapTabName(mapTabName)
+  local funcName = "EMCO:setMapTabName(mapTabName)"
+  local mapTabNameType = type(mapTabName)
+  if mapTabNameType ~= "string" then 
+    self:ae(funcName, "mapTabName as string expected, got" .. mapTabNameType) 
+  end
+  if not table.contains(self.consoles, mapTabName) and mapTabName ~= "" then 
+    self:ae(funcName, "mapTabName must be one of the existing console tabs. Current tabs are: " .. table.concat(self.consoles, ","))
+  end
+  self.mapTabName = mapTabName    
+end
+
+--- Enables tab blinking even if you're on the 'all' tab
+function EMCO:enableBlinkFromAll()
+  self.enableBlinkFromAll = true
+end
+
+--- Disables tab blinking when you're on the 'all' tab
+function EMCO:disableBlinkFromAll()
+  self.enableBlinkFromAll = false
+end
+
+--- Enables gagging of the line passed in to :append(tabName)
+function EMCO:enableGag()
+  self.gag = true
+end
+
+--- Disables gagging of the line passed in to :append(tabName)
+function EMCO:disableGag()
+  self.gag = false
+end
+
+--- Enables tab blinking when new information comes in to an inactive tab
+function EMCO:enableBlink()
+  self.blink = true
+end
+
+--- Disables tab blinking when new information comes in to an inactive tab
+function EMCO:disableBlink()
+  self.blink = false
+end
+
+--- Enables preserving the chat's background over the background of an incoming :append()
+function EMCO:enablePreserveBackground()
+  self.preserveBackground = true
+end
+
+--- Enables preserving the chat's background over the background of an incoming :append()
+function EMCO:disablePreserveBackground()
+  self.preserveBackground = false
+end
+
+--- Sets how long in seconds to wait between blinks
+-- @tparam number blinkTime time in seconds to wait between blinks
+function EMCO:setBlinkTime(blinkTime)
+  local funcName = "EMCO:setBlinkTime(blinkTime)"
+  local blinkTimeNumber = tonumber(blinkTime)
+  if not blinkTimeNumber then
+    self:ae(funcName, "blinkTime as number expected, got ".. type(blinkeTime))
+  else
+    self.blinkTime = blinkTimeNumber
+    if self.blinkTimerID then
+      killTimer(self.blinkTimerID)
+    end
+    self.blinkTimerID = tempTimer(blinkTimeNumber, function() self:blink() end, true)
+  end
+end
+
+function EMCO:doBlink()
+  if self.hidden or self.auto_hidden or not self.blink then
+    return
+  end
+  for tab,_ in pairs(self.tabsToBlink) do
+    self.tabs[tab]:flash()
+  end
+end
+
+--- Sets the font size of the attached consoles
+-- @tparam number fontSize font size for attached consoles
+function EMCO:setFontSize(fontSize)
+  local funcName = "EMCO:setFontSize(fontSize)"
+  local fontSizeNumber = tonumber(fontSize)
+  local fontSizeType = type(fontSize)
+  if not fontSizeNumber then
+    self:ae(funcName, "fontSize as number expected, got " .. fontSizeType)
+  else
+    self.fontSize = fontSizeNumber
+    for _,tabName in ipairs(self.consoles) do
+      if self.mapTab and tabName == self.mapTabName then
+        -- skip this one
+      else
+        local window = self.windows[tabName]
+        window:setFontSize(fontSizeNumber)
+      end
+    end
+  end
+end
+
+function EMCO:adjustTabNames()
+  for _,console in ipairs(self.consoles) do
+    if console == self.currentTab then
+      self.tabs[console]:echo(console, self.activTabFGColor, 'c')
+    else
+      self.tabs[console]:echo(console, self.inactiveTabFGColor, 'c')
+    end
+  end
+end
+
+function EMCO:adjustTabBackgrounds()
+  for _, console in ipairs(self.consoles) do
+    local tab = self.tabs[console]
+    if console == self.currentTab then
+      tab:setStyleSheet(self.activeTabCSS)
+      tab:setColor(self.activeBGColor)
+    else
+      tab:setStyleSheet(self.inactiveTabCSS)
+      tab:setColor(self.inactiveBGColor)
+    end
+  end
+end
+
+--- Sets the FG color for the active tab
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setActiveTabFGColor(color)
+  self.activeTabFGColor = color
+  self:adjustTabNames()
+end
+
+--- Sets the FG color for the inactive tab
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setInactiveTabFGColor(color)
+  self.inactiveTabFGColor = color
+  self:adjustTabNames()
+end
+
+--- Sets the BG color for the active tab.
+-- &lt;br&gt;NOTE: If you set CSS for the active tab, it will override this setting. 
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setActiveTabBGColor(color)
+  self.activeTabBGColor = color
+  self:adjustTabBackgrounds()
+end
+
+--- Sets the BG color for the inactive tab.
+-- &lt;br&gt;NOTE: If you set CSS for the inactive tab, it will override this setting.
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setInactiveTabBGColor(color)
+  self.inactiveTabBGColor = color
+  self:adjustTabBackgrounds()
+end
+
+--- Sets the BG color for the consoles attached to this object
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setConsoleColor(color)
+  self.consoleColor = color
+  self:adjustConsoleColors()
+end
+
+function EMCO:adjustConsoleColors()
+  for _,console in ipairs(self.consoles) do
+    if self.mapTab and self.mapTabName == console then
+      -- skip Map
+    else
+      self.windows[console]:setColor(self.consoleColor)
+    end
+  end
+end
+
+--- Sets the CSS to use for the tab box which contains the tabs for the object
+-- @tparam string css The css styling to use for the tab box
+function EMCO:setTabBoxCSS(css)
+  local funcName = "EMCHO:setTabBoxCSS(css)"
+  local cssType = type(css)
+  if cssType ~= "string" then
+    self:ae(funcName, "css as string expected, got " .. cssType)
+  else
+    self.tabBoxCSS = css
+    self:adjustTabBoxBackground()
+  end
+end
+
+--- Sets the color to use for the tab box background
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setTabBoxColor(color)
+  self.tabBoxColor = color
+  self:adjustTabBoxBackground()
+end
+
+function EMCO:adjustTabBoxBackground()
+    self.tabBoxLabel:setStyleSheet(self.tabBoxCSS)
+    self.tabBoxLabel:setColor(self.tabBoxColor)
+end
+
+--- Sets the color for the container which holds the consoles attached to this object.
+-- @param color Color string suitable for decho or hecho, or color name eg "purple", or table of colors {r,g,b}
+function EMCO:setConsoleContainerColor(color)
+  self.consoleContainerColor = color
+  self:adjustConsoleContainerBackground()
+end
+
+--- Sets the CSS to use for the container which holds the consoles attached to this object
+-- @tparam string css CSS to use for the container
+function EMCO:setConsoleContainerCSS(css)
+  self.consoleContainerCSS = css
+  self:adjustConsoleContainerBackground()
+end
+
+function EMCO:adjustConsoleContainerBackground()
+  self.consoleContainer:setStyleSheet(self.consoleContainerCSS)
+  self.consoleContainer:setColor(self.consoleContainerColor)
+end
+
+--- Sets the amount of space to use between the tabs and the consoles
+-- @tparam number gap Number of pixels to keep between the tabs and consoles
+function EMCO:setGap(gap)
+  local gapNumber = tonumber(gap)
+  local funcName = "EMCO:setGap(gap)"
+  local gapType = type(gap)
+  if not gapNumber then
+    self:ae(funcName, "gap expected as number, got " .. gapType)
+  else
+    self.gap = gapNumber
+    self:reset()
+  end
+end
+
+--- Sets the height of the tabs in pixels
+-- @tparam number tabHeight the height of the tabs for the object, in pixels
+function EMCO:setTabHeight(tabHeight)
+  local tabHeightNumber = tonumber(tabHeight)
+  local funcName = "EMCO:setTabHeight(tabHeight)"
+  local tabHeightType = type(tabHeight)
+  if not tabHeightNumber then
+    self:ae(funcName, "tabHeight as number expected, got ".. tabHeightType)
+  else
+    self.tabHeight = tabHeightNumber
+    self:reset()
+  end
+end
+
+--- Enables autowrap for the object, and by extension all attached consoles.
+-- &lt;br&gt;To enable autoWrap for a specific miniconsole only, call myEMCO.windows[tabName]:enableAutoWrap()
+-- but be warned if you do this it may be overwritten by future calls to EMCO:enableAutoWrap() or :disableAutoWrap()
+function EMCO:enableAutoWrap()
+  self.autoWrap = true
+  for _,console in ipairs(self.consoles) do
+    if self.mapTab and console == self.mapTabName then
+      -- skip the map
+    else
+      self.windows[console]:enableAutoWrap()
+    end
+  end
+end
+
+--- Disables autowrap for the object, and by extension all attached consoles.
+-- &lt;br&gt;To disable autoWrap for a specific miniconsole only, call myEMCO.windows[tabName]:disableAutoWrap()
+-- but be warned if you do this it may be overwritten by future calls to EMCO:enableAutoWrap() or :disableAutoWrap()
+function EMCO:disableAutoWrap()
+  self.autoWrap = false
+  for _,console in ipairs(self.consoles) do
+    if self.mapTab and self.mapTabName == console then
+      -- skip Map
+    else
+      self.windows[console]:disableAutoWrap()
+    end
+  end
+end
+
+--- Sets the number of characters to wordwrap the attached consoles at.
+-- &lt;br&gt;it is generally recommended to make use of autoWrap unless you need
+-- a specific width for some reason
+function EMCO:setWrap(wrapAt)
+  local funcName = "EMCO:setWrap(wrapAt)"
+  local wrapAtNumber = tonumber(wrapAt)
+  local wrapAtType = type(wrapAt)
+  if not wrapAtNumber then
+    self:ae(funcName, "wrapAt as number expect, got " .. wrapAtType)
+  else
+    self.wrapAt = wrapAtNumber
+    for _,console in ipairs(self.consoles) do
+      if self.mapTab and self.mapTabName == console then
+        -- skip the Map
+      else
+        self.windows[console]:setWrap(wrapAtNumber)
+      end
+    end
+  end
+end
+
+--- Appends the current line from the MUD to a tab.
+-- &lt;br&gt;depending on this object's configuration, may gag the line
+-- &lt;br&gt;depending on this object's configuration, may gag the next prompt
+-- @tparam string tabName The name of the tab to append the line to
+function EMCO:append(tabName)
+  local funcName = "EMCO:append(tabName)"
+  local tabNameType = type(tabName)
+  local validTab = table.contains(self.consoles, tabName)
+  if tabNameType ~= "string" then 
+    self:ae(funcName, "tabName as string expected, got ".. tabNameType)
+  elseif not validTab then
+    self:ae(funcNAme, "tabName must be a tab which is contained in this object. Valid tabnames are: " .. table.concat(self.consoles, ","))
+  end
+  self:xEcho(tabName, nil, 'a')
+end
+
+function EMCO:checkEchoArgs(funcName, tabName, message)
+  local tabNameType = type(tabName)
+  local messageType = type(message)
+  local validTabName = table.contains(self.consoles, tabName)
+  if tabNameType ~= "string" then
+    self:ae(funcName, "tabName as string expected, got " .. tabNameType)
+  elseif messageType ~= "string" then
+    self:ae(funcName, "message as string expected, got " .. messageType)
+  elseif not validTabName then
+    self:ae(funcName, "tabName must be the name of a tab attached to this object. Valid names are: " .. table.concat(self.consoles, ","))
+  end
+end
+
+function EMCO:xEcho(tabName, message, xtype)
+  if self.mapTab and self.mapTabName == tabName then
+    error("You cannot send text to the Map tab")
+  end
+  local console = self.windows[tabName]
+  local allTab,ofr,ofg,ofb,obr,obg,obb
+  if self.allTab then
+    allTab = self.windows[self.allTabName]
+  end
+  if xtype == "a" then
+    selectCurrentLine()
+    ofr,ofg,ofb = getFgColor()
+    obr,obg,obb = getBgColor()
+    if self.preserveBackground then
+      local r,g,b = Geyser.Color.parse(self.consoleColor)
+      setBgColor(r,g,b)
+    end
+    copy()    
+  else
+    ofr,ofg,ofb = Geyser.Color.parse("white")
+    obr,obg,obb = Geyser.Color.parse(self.consoleColor)
+  end
+  if self.timestamp then
+    local colorString = ""
+    if self.customTimestampColor then
+      local tfr,tfg,tfb = Geyser.Color.parse(self.timestampFGColor)
+      local tbr,tbg,tbb = Geyser.Color.parse(self.timestampBGColor)
+      colorString = string.format("&lt;%s,%s,%s:%s,%s,%s&gt;", tfr,tfg,tfb,tbr,tbg,tbb)
+    else
+      colorString = string.format("&lt;%s,%s,%s:%s,%s,%s&gt;", ofr,ofg,ofb,obr,obg,obb)
+    end
+    local timestamp = getTime(true, self.timestampFormat)
+    local fullTimestamp = string.format("%s%s&lt;r&gt; ", colorString, timestamp)
+    console:decho(fullTimestamp)
+    if self.allTab and tabName ~= self.allTabName then
+      allTab:decho(fullTimestamp)
+    end
+  end
+  if self.blink and tabName ~= self.currentTab then
+    if not (self.allTabName == self.currentTab and not self.blinkFromAll) then
+      self.tabsToBlink[tabName] = true
+    end
+  end
+  if xtype == "a" then
+    console:appendBuffer()
+    if self.allTab then
+      allTab:appendBuffer()
+    end
+    if self.gag then
+      deleteLine()
+      if self.gagPrompt then
+        tempPromptTrigger(function() deleteLine() end, 1)
+      end
+    end
+  elseif xtype == "c" then
+    console:cecho(message)
+    if self.allTab then allTab:cecho(message) end  
+  elseif xtype == "d" then
+    console:decho(message)
+    if self.allTab then allTab:decho(message) end
+  elseif xtype == "h" then
+    console:hecho(message)
+    if self.allTab then allTab:hecho(message) end
+  elseif xtype == "e" then
+    console:echo(message)
+    if self.allTab then allTab:echo(message) end
+  end
+  if self.blankLine then
+    console:echo("\n")
+    if self.allTab then allTab:echo("\n") end
+  end
+end
+
+--- cecho to a tab, maintaining functionality
+-- @tparam string tabName the name of the tab to cecho to
+-- @tparam string message the message to cecho to that tab's console
+function EMCO:cecho(tabName, message)
+  local funcName = "EMCO:cecho(tabName, message)"
+  self:checkEchoArgs(funcName, tabName, message)
+  self:xEcho(tabName, message, 'c')
+end
+
+--- decho to a tab, maintaining functionality
+-- @tparam string tabName the name of the tab to decho to
+-- @tparam string message the message to decho to that tab's console
+function EMCO:decho(tabName, message)
+  local funcName = "EMCO:decho(console, message)"
+  self:checkEchoArgs(funcName, tabName, message)
+  self:xEcho(tabName, message, 'd')
+end
+
+--- hecho to a tab, maintaining functionality
+-- @tparam string tabName the name of the tab to hecho to
+-- @tparam string message the message to hecho to that tab's console
+function EMCO:hecho(tabName, message)
+  local funcName = "EMCO:hecho(console, message)"
+  self:checkEchoArgs(funcName, tabName, message)
+  self:xEcho(tabName, message, 'h')
+end
+
+--- echo to a tab, maintaining functionality
+-- @tparam string tabName the name of the tab to echo to
+-- @tparam string message the message to echo to that tab's console
+function EMCO:echo(tabName, message)
+  local funcName = "EMCO:echo(console, message)"
+  self:checkEchoArgs(funcName, tabName, message)
+  self:xEcho(tabName, message, 'e')
+end
+
+--- Enable placing a blank line between all messages.
+function EMCO:enableBlankLine()
+  self.blankLine = true
+end
+
+--- Enable placing a blank line between all messages.
+function EMCO:disableBlankLine()
+  self.blankLine = false
+end
+
+--- Enable scrollbars for the miniconsoles
+function EMCO:enableScrollbars()
+  self.scrollbars = true
+  self:adjustScrollbars()
+end
+
+--- Disable scrollbars for the miniconsoles
+function EMCO:disableScrollbars()
+  self.scrollbars = false
+  self:adjustScrollbars()
+end
+
+function EMCO:adjustScrollbars()
+  for _,console in ipairs(self.consoles) do
+    if self.mapTab and self.mapTabName == console then
+      -- skip the Map tab
+    else
+      if self.scrollbars then
+        self.windows[console]:enableScrollBar()
+      else
+        self.windows[console]:disableScrollBar()
+      end
+    end
+  end
+end
+
+EMCOHelper = EMCOHElper or {}
+EMCOHelper.items = EMCOHelper.items or {}
+function EMCOHelper:switchTab(designator)
+  local args = string.split(designator, "+")
+  local emcoName = args[1]
+  local tabName = args[2]
+  for _,emco in ipairs(EMCOHelper.items) do
+    if emco.name == emcoName then
+      emco:switchTab(tabName)
+      return
+    end
+  end
+end
+
+EMCO.parent = Geyser.Container
+
+--- Creates a new Embeddable Multi Console Object.
+-- &lt;br&gt;see https://github.com/demonnic/EMCO/wiki for information on valid constraints and defaults
+-- @tparam table cons table of constraints which configures the EMCO. 
+-- @tparam GeyserObject container The container to use as the parent for the EMCO
+-- @return the newly created EMCO
+function EMCO:new(cons, container)
+  local funcName = "EMCO:new(cons, container)"
+  cons = cons or {}
+  cons.type = cons.type or "tabbedConsole"
+  cons.consoles = cons.consoles or { "All" }
+  if cons.mapTab then
+    if not type(cons.mapTabName) == "string" then
+      self:ce(funcName, [["mapTab" is true, thus constraint "mapTabName" and string expected, got ]] .. type(cons.mapTabName))
+    elseif not table.contains(cons.consoles, cons.mapTabName) then
+      self:ce(funcName, [["mapTabName" must be one of the consoles contained within constraint "consoles". Valid option for tha mapTab are: ]] .. table.concat(cons.consoles, ","))
+    end
+  end
+  local me = self.parent:new(cons, container)
+  setmetatable(me, self)
+  self.__index = self
+  -- set some defaults. Almost all the defaults we had for YATCO, plus a few new ones
+  if me:fuzzyBoolean(cons.timestamp) then 
+    me:enableTimestamp()
+  else
+    me:disableTimestamp()
+  end
+  if me:fuzzyBoolean(cons.customTimestampColor) then
+    me:enableCustomTimestampColor()
+  else
+    me:disableCustomTimestampColor()
+  end
+  if me:fuzzyBoolean(cons.mapTab) then 
+    me.mapTab = true
+  else
+    me.mapTab = false
+  end
+  if me:fuzzyBoolean(cons.blinkFromAll) then 
+    me:enableBlinkFromAll()
+  else
+    me:disableBlinkFromAll()
+  end
+  if me:fuzzyBoolean(cons.preserveBackground) then 
+    me:enablePreserveBackground()
+  else
+    me:disablePreserveBackground()
+  end
+  if me:fuzzyBoolean(cons.gag)then 
+    me:enableGag() 
+  else
+    me:disableGag()
+  end
+  me:setTimestampFormat(cons.timestampFormat or "HH:mm:ss")
+  me:setTimestampBGColor(cons.timestampBGColor or "blue")
+  me:setTimestampFGColor(cons.timestampFGColor or "red")
+  if me:fuzzyBoolean(cons.allTab) then
+    me:enableAllTab(cons.allTab)
+  else
+    me:disableAllTab()
+  end
+  me:setAllTabName(cons.allTabName or "All")
+  if me:fuzzyBoolean(cons.blink) then
+    me:enableBlink()
+  else
+    me:disableBlink()
+  end
+  if me:fuzzyBoolean(cons.blankLine) then
+    me:enableBlankLine()
+  else
+    me:disableBlankLine()
+  end
+  if me:fuzzyBoolean(cons.scrollbars) then
+    me.scrollbars = true
+  else
+    me.scrollbars = false
+  end
+  me.blinkTime = cons.blinkTime or 3
+  me.fontSize = cons.fontSize or 9
+  me.activeTabCSS = cons.activeTabCSS or ""
+  me.inactiveTabCSS = cons.inactiveTabCSS or ""
+  me.activeTabFGColor = cons.activeTabFGColor or "purple"
+  me.inactiveTabFGColor = cons.inactiveTabFGColor or "white"
+  me.activeTabBGColor = cons.activeTabBGColor or "&lt;0,180,0&gt;"
+  me.inactiveTabBGColor = cons.inactiveTabBGColor or "&lt;60,60,60&gt;"
+  me.consoleColor = cons.consoleColor or "black" 
+  me.tabBoxCSS = cons.tabBoxCSS or ""
+  me.tabBoxColor = cons.tabBoxColor or "black"
+  me.consoleContainerCSS = cons.consoleContainerCSS or ""
+  me.consoleContainerColor = cons.consoleContainerColor or "black"
+  me.gap = cons.gap or 1
+  me.consoles = cons.consoles
+  me.tabHeight = cons.tabHeight or 25
+  if cons.autoWrap == nil then
+    me.autoWrap = true
+  else
+    me.autoWrap = cons.autoWrap
+  end
+  me.wrapAt = cons.wrapAt or 300
+  me.currentTab = ""
+  me.tabs = {}
+  me.tabsToBlink = {}
+  me.windows = {}
+  self.blinkTimerID = tempTimer(me.blinkTime, function() me:doBlink() end, true)
+  me:reset()
+  table.insert(EMCOHelper.items, me)
+  return me
+end</script>
+						<eventHandlerList />
+					</Script>
+				</ScriptGroup>
+			</ScriptGroup>
+			<Script isActive="yes" isFolder="no">
+				<name>Cadet Structure</name>
+				<packageName></packageName>
+				<script>    --edit this, if you dare
+cadet = cadet or {
+  settings = {
+    font_size = 10,
+    font_name = "Bitstream Vera Sans Mono",
+  }
+}
+
+--don't edit this; this configures values based on your screen setup and adjusts it to fit the GUI/fit the GUI into your screen
+function cadet.setup_window()
+  setFontSize("main", cadet.settings.font_size)
+  cadet.config = {}
+  cadet.config.w, cadet.config.h = getMainWindowSize()
+  cadet.config.cw, cadet.config.ch = calcFontSize()
+  cadet.config.text_width = cadet.config.cw*100
+  cadet.config.side_border_size = (cadet.config.w - cadet.config.text_width) / 2
+  setBorderRight(cadet.config.side_border_size)
+  setBorderLeft(cadet.config.side_border_size-16)
+  setBorderBottom(cadet.config.ch*2)
+  
+  cadet.containers = {}
+  cadet.containers.left = Geyser.Container:new({
+    name = "cadet.containers.left",
+    x = 0, y = 0,
+    width = cadet.config.side_border_size-16,
+    height = "100%",
+  })
+  cadet.containers.right = Geyser.Container:new({
+    name = "cadet.containers.right",
+    x = (cadet.config.w-cadet.config.side_border_size),
+    y = 0,
+    width = cadet.config.side_border_size,
+    height = "100%",
+  })
+  cadet.containers.bottom = Geyser.Container:new({
+    name = "cadet.containers.bottom",
+    x = cadet.config.side_border_size-16,
+    y = 0-cadet.config.ch*2,
+    width = cadet.config.text_width+16,
+    height = cadet.config.ch*2,
+  })
+  cadet.start_left()
+  cadet.start_right()
+end
+
+registerAnonymousEventHandler("sysLoadEvent", "cadet.setup_window")</script>
+				<eventHandlerList />
+				<Script isActive="yes" isFolder="no">
+					<name>Left side cadet</name>
+					<packageName></packageName>
+					<script>function cadet.start_left()
+  cadet.left = cadet.left or {}
+  cadet.left.map = cadet.left.map or {}
+  cadet.left.map.frame = Geyser.Label:new({
+    name = "cadet.left.map.frame",
+    x = 0, y = 0, 
+    width = "100%",
+    height = "40%",
+  }, cadet.containers.left)
+  
+  cadet.left.map.frame:setStyleSheet([[
+    background-color: #07111c;
+  ]])
+  
+  cadet.left.map.mapper = Geyser.Mapper:new({
+    x = "2%", y = "3%",
+    width = "96%",
+    height = "95%",
+    name = "cadet.left.map.mapper",
+  }, cadet.left.map.frame)
+  
+  cadet.left.status = cadet.left.status or {}
+  cadet.left.status.frame = Geyser.Label:new({
+    name = "cadet.left.status.frame",
+    x = 0, y = "40%",
+    width = "100%",
+    height = "60%",
+  }, cadet.containers.left)
+  cadet.left.status.frame:setStyleSheet([[
+    background-color: #000000;
+    border-image: url(]]..getMudletHomeDir()..[[/cadet_gui/status_frame.png);
+  ]])
+  
+  cadet.left.status.name_bar = Geyser.Label:new({
+    name = "cadet.left.status.name_bar",
+    x = "5%", y = "1%",
+    width = "90%",
+    height = "5%",
+  }, cadet.left.status.frame)
+  cadet.left.status.name_bar:setStyleSheet([[
+    border-image: url(]]..getMudletHomeDir()..[[/cadet_gui/trapezoid.png);
+  ]])
+  
+  cadet.left.status.health_container = Geyser.VBox:new({
+    name = "cadet.left.status.health_container",
+    x = "5%", y = "7%",
+    width = "85%",
+    height = "10%",
+  }, cadet.left.status.frame)
+  
+  cadet.left.status.health_bar = demonnic.iGauge:new({
+    name = "cadet.left.status.health_bar",
+    emptycolor = "#18222c",
+    fillcolor = "LightCyan",
+    bartype = "slant",
+  }, cadet.left.status.health_container)
+  
+  ww_fc = "#77888c"
+  ww_ec = "#33444c"
+  
+  cadet.left.status.health_label = Geyser.Label:new({
+    name = "cadet.left.status.health_label",
+    width = 20,
+    message = "&amp;nbsp;HEALTH: 5050 (100%)",
+    color = "#07111c",
+  }, cadet.left.status.health_container)
+  cadet.left.status.health_label:setStyleSheet([[
+    background-color: #18222C;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+  ]])
+ end</script>
+					<eventHandlerList />
+				</Script>
+				<Script isActive="yes" isFolder="no">
+					<name>Right side cadet</name>
+					<packageName></packageName>
+					<script>function cadet.start_right()
+  cadet.right = cadet.right or {}
+  -- room stuff here; mobs and items, split or maybe separate tabs.
+  cadet.right.room = cadet.right.room or {}
+  cadet.right.room.frame = Geyser.Label:new({
+    name = "cadet.right.room.frame",
+    x = 0, y = 0, 
+    width = "100%", 
+    height = "50%",
+  }, cadet.containers.right)
+  
+  cadet.right.room.frame:setStyleSheet([[
+    background-color: #00000a;
+  ]])
+  
+  cadet.right.room.title = Geyser.Label:new({
+    name = "cadet.right.room.title",
+    x = 0, y = 0,
+    width = "100%",
+    height = 15,
+    message = "&amp;nbsp;Room Inventory and Mobs",
+  }, cadet.right.room.frame)
+  cadet.right.room.title:setStyleSheet([[
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    background-color: #07111c;
+    border-bottom: 1px black solid;
+  ]])
+  cadet.right.room.left_box = Geyser.MiniConsole:new({
+    name = "cadet.right.room.left_box",
+    x = 0, y = 18,
+    width = "50%",
+    height = cadet.right.room.frame:get_height() - 18,
+    color = "#07111c",
+  }, cadet.right.room.frame)
+  cadet.right.room.right_box = Geyser.MiniConsole:new({
+    name = "cadet.right.room.right_box",
+    x = "51%", y = 18,
+    width = "49.2%",
+    height = cadet.right.room.frame:get_height() - 18,
+    color = "#07111c",
+  }, cadet.right.room.frame)
+  
+  -- chat stuff here
+  local actabcss = [[
+    background-color: #48708a;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+  ]]
+  local iactabcss = [[
+    background-color: #07111c;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border: 1px solid black;
+  ]] 
+  cadet.right.chat = cadet.right.chat or {}
+  cadet.right.chat.box = EMCO:new({
+    name = "cadet.right.chat.box",
+    allTab = true,
+    blink = true,
+    activeTabCSS = actabcss,
+    activeTabFGColor = "white",
+    inactiveTabCSS = iactabcss,
+    consoles = { "All", "Crew", "FT", "Clans", "RP", "Newbie"},
+    consoleContainerColor = "#07111c",
+  
+    x = 0, y = "50%",
+    width = "100%", 
+    height = "54%",
+  }, cadet.containers.right)
+end</script>
+					<eventHandlerList />
+				</Script>
+			</Script>
+			<Script isActive="yes" isFolder="no">
+				<name>GMCP Api</name>
+				<packageName></packageName>
+				<script>gapi = gapi or {}
+
+gapi.me = gapi.me or {
+  health = 5000,
+  maxhealth = 5000,
+  sys = {
+    wetwiring = {health = 100, efficacy = 100},
+    muscular = {health = 100, efficacy = 100},
+    internal = {health = 100, efficacy = 100},
+    mind = {health = 100, efficacy = 100},
+    sensory = {health = 100, efficacy = 100},
+  },
+  xpc = 0,
+  xpt = 0,
+  balance = true,
+  wetwiring = true,
+  combat = false,
+  class = "Nanoseer",
+  name = "Sorrow Cadet",
+  first_name = "Cadet",
+  race = "Human",
+  marks = "1000",
+  gender = "unassumed",
+}
+gapi.inventory = gapi.inventory or {}
+gapi.mobs = gapi.mobs or {}
+gapi.room = gapi.room or {}
+gapi.afflictions = gapi.afflictions or {}
+gapi.defences = gapi.defences or {}
+</script>
+				<eventHandlerList />
+			</Script>
+			<Script isActive="yes" isFolder="no">
+				<name>on_gmcp</name>
+				<packageName></packageName>
+				<script>function on_gmcp(event)
+  local case = {
+    ["gmcp.Char.Vitals"] = function()
+      local vit = gmcp.Char.Vitals
+      if gapi.me then 
+        gapi.me.changes = {}
+        gapi.me.changes.health = vit.hp - gapi.me.health
+        gapi.me.changes.sys = {
+          wetwiring = vit.wetwiring - gapi.me.sys.wetwiring.health,
+          muscular = vit.muscular - gapi.me.sys.muscular.health,
+          internal = vit.internal - gapi.me.sys.internal.health,
+          mind = vit.mind - gapi.me.sys.mind.health,
+          sensory = vit.sensory - gapi.me.sys.sensory.health,
+        }
+        local resources = {
+          ["B.E.A.S.T."] = {"pl"},
+          ["Engineer"] = {"pt"},
+          ["Fury"] = {"rg"},
+          ["Nanoseer"] = {"sa", "nn"},
+          ["Scoundrel"] = {"bl"},
+        }
+        for _, res in ipairs(resources[gapi.me.class]) do
+          if gapi.me[res] then
+            gapi.me.changes[res] = vit[res] - gapi.me[res]
+          end
+        end
+        --display(gapi.me.changes)
+        raiseEvent("gapi vitals changes", gapi.me.changes)
+      end
+      local me = gapi.me or {}
+      me.health = vit.hp
+      me.maxhealth = vit.maxhp
+      me.sys = {
+        wetwiring = {health = vit.wetwiring, efficacy = vit.wetwiring_efficacy},
+        muscular = {health = vit.muscular, efficacy = vit.muscular_efficacy},
+        internal = {health = vit.internal, efficacy = vit.internal_efficacy},
+        mind = {health = vit.mind, efficacy = vit.mind_efficacy},
+        sensory = {health = vit.sensory, efficacy = vit.sensory_efficacy},
+      }
+      me.xpc = vit.nl
+      me.xpt = vit.xp
+      me.balance = true and vit.bal == "1" or false
+      me.wetwiring = true and vit.ww == "1" or false
+      me.combat = true and vit.combat == "true" or false
+      local resources = {
+        ["B.E.A.S.T."] = {"pl"},
+        ["Engineer"] = {"pt"},
+        ["Fury"] = {"rg"},
+        ["Nanoseer"] = {"sa", "nn"},
+        ["Scoundrel"] = {"bl"},
+      }
+      if me.class then
+        for _, res in ipairs(resources[me.class]) do
+          me[res] = vit[res]
+        end
+      end 
+      gapi.me = me
+      raiseEvent("gapi vitals")
+      return true
+    end,
+    ["gmcp.Char.Status"] = function()
+      local s = gmcp.Char.Status
+      local me = gapi.me or {}
+      me.class = s.class
+      me.name = s.name 
+      me.first_name = s.first_name
+      me.race = s.race
+      me.gender = s.gender
+      raiseEvent("gapi status")
+      return true
+    end,
+    ["gmcp.Comm.Channel.Text"] = function()
+      local c = gmcp.Comm.Channel.Text
+      raiseEvent("gapi Comm.Text", c.channel, c.talker, c.text)
+    end,
+    ["gmcp.Char.Items.List"] = function()
+      local it = gmcp.Char.Items.List
+      raiseEvent("gapi Items.List", it.location, it.items)
+    end,
+    ["gmcp.Char.Items.Add"] = function()
+      local it = gmcp.Char.Items.Add
+      raiseEvent("gapi Items.Add", it.location, it.item)
+    end,
+    ["gmcp.Char.Items.Remove"] = function()
+      local it = gmcp.Char.Items.Remove
+      raiseEvent("gapi Items.Remove", it.location, it.item)
+    end,
+    ["gmcp.Char.Items.Update"] = function()
+      local it = gmcp.Char.Items.Update
+      raiseEvent("gapi.Items.Update", it.location, it.item)
+    end,
+    ["gmcp.Char.Afflictions.Add"] = function()
+      local aff = gmcp.Char.Afflictions.Add
+      raiseEvent("gapi Afflictions.Add", aff.name)
+    end,
+    ["gmcp.Char.Afflictions.Remove"] = function()
+      local aff = gmcp.Char.Afflictions.Remove[1]
+      raiseEvent("gapi Afflictions.Remove", aff)
+    end,
+    ["gmcp.Char.Afflictions.List"] = function()
+      local aff = gmcp.Char.Afflictions.List
+      raiseEvent("gapi Afflictions.List", aff)
+    end,
+  }
+  if case[event] then case[event]() end --else error("on_gmcp: operation "..event.." not yet implemented") end
+end</script>
+				<eventHandlerList>
+					<string>gmcp.Char.Vitals</string>
+					<string>gmcp.Comm.Channel.Text</string>
+					<string>gmcp.Char.Defences.Add</string>
+					<string>gmcp.Char.Defences.List</string>
+					<string>gmcp.Char.Defences.Remove</string>
+					<string>gmcp.Char.Afflictions.Add</string>
+					<string>gmcp.Char.Afflictions.List</string>
+					<string>gmcp.Char.Afflictions.Remove</string>
+					<string>gmcp.Char.Status</string>
+					<string>gmcp.Char.Items.List</string>
+					<string>gmcp.Char.Items.Add</string>
+					<string>gmcp.Char.Items.Remove</string>
+					<string>gmcp.Char.Items.Update</string>
+				</eventHandlerList>
+				<Script isActive="yes" isFolder="no">
+					<name>gmcp_comm</name>
+					<packageName></packageName>
+					<script>function gmcp_comm(event, channel, talker, text)
+  -- we push to channels here
+  local conv = {
+    newbie = "Newbie", 
+    crew = "Crew",
+    ft = "FT",
+    say = "RP",
+    tell = "RP",
+  }
+  text = ansi2decho(text)..'\n'
+  --debug display(text)
+  channel = conv[channel:match("^(%a+)")] or "Clans"
+  --debug display(channel)
+  cadet.right.chat.box:decho(channel, text)
+end</script>
+					<eventHandlerList>
+						<string>gapi Comm.Text</string>
+					</eventHandlerList>
+				</Script>
+				<Script isActive="yes" isFolder="no">
+					<name>item utilities</name>
+					<packageName></packageName>
+					<script>function gapi.addItem(location, id, item)
+  if gapi[location][id] then error("gapi Items.Add: attempted to add item (["..id.."]: "..item.name..") to "..location.." that already exists!") end
+    gapi[location][id] = {
+    name = item.name,
+    attrib = item.attrib or "",
+  }
+end
+
+function gapi.itemExists(location, id)
+  return gapi[location][id]
+end
+
+function gapi.getItemList(location, name)
+  local t = {}
+  for id, item in pairs(gapi[location]) do
+    if item.name == name then
+      table.insert(t, id)
+    end
+  end
+  table.sort(t)
+  return t, #t
+end</script>
+					<eventHandlerList />
+					<Script isActive="yes" isFolder="no">
+						<name>gmcp_inventory</name>
+						<packageName></packageName>
+						<script>function gmcp_inventory(event, location, items)
+  if location ~= "inv" then return end
+  local case = {
+    ["gapi Items.Add"] = function()
+      gapi.addItem("inventory", items.id, items)
+    end,
+    ["gapi Items.Remove"] = function()
+      if not gapi.itemExists("inventory", items.id) then error("gapi Items.Remove: attempted to remove item (["..items.id.."]: "..items.name..") from inventory that doesn't exist") end
+      gapi.inventory[items.id] = nil
+    end,
+    ["gapi Items.List"] = function()
+      gapi.inventory = {}
+      for _, item in ipairs(items) do
+        gapi.addItem("inventory", item.id, item)
+      end
+    end,
+    ["gapi Items.Update"] = function()
+      if not gapi.itemExists("inventory", items.id) then error("gapi Items.Update: attempted to update item (["..items.id.."] "..items.name..") that doesn't exist!") end
+      gapi.inventory[items.id] = nil
+      gapi.addItem("inventory", items.id, items)
+    end
+  }
+  if case[event] then case[event]() else error("gmcp_inventory: operation not implemented") end
+  raiseEvent("gapi inventory")
+end</script>
+						<eventHandlerList>
+							<string>gapi Items.Add</string>
+							<string>gapi Items.Remove</string>
+							<string>gapi Items.List</string>
+							<string>gapi Items.Update</string>
+						</eventHandlerList>
+					</Script>
+					<Script isActive="yes" isFolder="no">
+						<name>gmcp_room</name>
+						<packageName></packageName>
+						<script>function gmcp_room(event, location, items)
+  if location ~= "room" then return end
+  local case = {
+    ["gapi Items.Add"] = function()
+      local loc = string.find(items.attrib or "", "m") and "mobs" or "room"
+      gapi.addItem(loc, items.id, items)
+    end,
+    ["gapi Items.Remove"] = function()
+      local loc = string.find(items.attrib or "", "m") and "mobs" or "room"
+      if not gapi.itemExists("room", items.id) then error("gapi Items.Remove: attempted to remove item (["..items.id.."]: "..items.name..") from inventory that doesn't exist") end
+      gapi[loc][items.id] = nil
+    end,
+    ["gapi Items.List"] = function()
+      gapi.room = {}
+      gapi.mobs = {}
+      for _, item in ipairs(items) do
+        local loc = string.find(item.attrib or "", "m") and "mobs" or "room"
+        gapi.addItem(loc, item.id, item)
+      end
+    end,
+  }
+  if case[event] then case[event]() else error("gmcp_room: operation "..event.." not implemented") end
+  raiseEvent("gapi room")
+  raiseEvent("gapi mobs")
+end</script>
+						<eventHandlerList>
+							<string>gapi Items.Remove</string>
+							<string>gapi Items.List</string>
+							<string>gapi Items.Add</string>
+						</eventHandlerList>
+						<Script isActive="yes" isFolder="no">
+							<name>update_room_gui</name>
+							<packageName></packageName>
+							<script>function update_room_gui()
+  clearWindow("cadet.right.room.left_box")
+  for id, info in pairs(gapi.room) do
+    hechoLink("cadet.right.room.left_box", string.format("#ffffff,07111c%s\n %s\n", info.name, id), [[send("look ]]..id..[[")]], info.name, true)
+  end
+end</script>
+							<eventHandlerList>
+								<string>gapi room</string>
+							</eventHandlerList>
+						</Script>
+						<Script isActive="yes" isFolder="no">
+							<name>update_mobs_gui</name>
+							<packageName></packageName>
+							<script>function update_mobs_gui()
+  clearWindow("cadet.right.room.right_box")
+  for id, info in pairs(gapi.mobs) do
+    hechoLink("cadet.right.room.right_box", string.format("#ffffff,07111c%s\n %s\n", info.name, id), [[send("look ]]..id..[[")]], info.name, true)
+  end
+end</script>
+							<eventHandlerList>
+								<string>gapi mobs</string>
+							</eventHandlerList>
+						</Script>
+					</Script>
+				</Script>
+				<Script isActive="yes" isFolder="no">
+					<name>gmcp_afflictions</name>
+					<packageName></packageName>
+					<script>function gapi.addAffliction(affliction)
+  if gapi.getAffliction(affliction) then error("gapi.addAffliction: attempted to add affliction("..affliction..") but we already have it!") end
+  table.insert(gapi.afflictions, affliction)
+  cecho("&lt;red&gt;+[&lt;tomato&gt;AFF&lt;red&gt;]: &lt;tomato&gt;"..affliction)
+end
+
+function gapi.getAffliction(affliction)
+  -- use table.index_of to get aff position in table
+  -- also use this to get stacking affs correctly
+  if table.contains(gapi.afflictions, affliction) then
+    return table.index_of(gapi.afflictions, affliction), affliction
+  end
+end
+
+function gapi.removeAffliction(affliction)
+  if not gapi.getAffliction(affliction) then error("gapi.removeAffliction: attempted to remove affliction("..affliction..") but we don't have it!") end
+  table.remove(gapi.afflictions, gapi.getAffliction(affliction))
+  cecho("&lt;green&gt;-[&lt;LawnGreen&gt;AFF&lt;green&gt;]: &lt;LawnGreen&gt;"..affliction)
+end
+
+function gmcp_afflictions(event, affs)
+  local case = {
+    ["gapi Afflictions.Add"] = function()
+     -- echo("add")
+     -- display(affs)
+      gapi.addAffliction(affs)      
+    end,
+    ["gapi Afflictions.Remove"] = function()
+     -- echo("remove")
+     -- display(affs)
+      gapi.removeAffliction(affs)
+    end,
+    ["gapi Afflictions.List"] = function()
+      for _, aff in ipairs(affs) do
+        gapi.addAffliction(affs)
+      end
+    end,
+  }
+  if case[event] then case[event]() else error("gmcp_afflictions: operation "..event.." not implemented.") end
+end</script>
+					<eventHandlerList>
+						<string>gapi Afflictions.Add</string>
+						<string>gapi Afflictions.Remove</string>
+						<string>gapi Afflictions.List</string>
+					</eventHandlerList>
+				</Script>
+				<Script isActive="yes" isFolder="no">
+					<name>gapi_class_init</name>
+					<packageName></packageName>
+					<script>  cadet = cadet or {} 
+function gapi_class_init()
+  --take advantage of this moment to initialize comms
+  sendGMCP([[Core.Supports.Add ["Comm.Channel 1"] ]])
+    -- always update name bar; don't always update class stuff.
+  cadet.left.status.name_bar:echo(string.format("&lt;center&gt;%s, Level %s %s (%s)", gapi.me.first_name, gmcp.Char.Status.level:match("%d+"), gapi.me.class, gmcp.Char.Status.level:match("%d+%%")))
+  if gapi.tracked_class then return end
+  gapi.tracked_class = gapi.me.class
+  local start_y = "13%"
+  if gapi.tracked_class == "Nanoseer" then
+    cadet.left.status.resources = Geyser.VBox:new({
+      name = "cadet.left.status.resources",
+      x = "5%", y = "17%",
+      height = "16%",
+      width = "80%",
+    }, cadet.left.status.frame) 
+    extra_space, remaining_space = "35%", "60%"
+  else
+    cadet.left.status.resources = Geyser.VBox:new({
+      name = "cadet.left.status.resources",
+      x = "5%", y = "17%",
+      height = "8%",
+      width = "80%",
+    }, cadet.left.status.frame)
+    extra_space, remaining_space = "26%", "69%"
+  end
+  
+  local case = {
+    ["B.E.A.S.T."] = function()
+      cadet.build_resource_bar("pl", "plasma", "curve")
+    end,
+    ["Engineer"] = function()
+      cadet.build_resource_bar("pt", "parts", "curve")
+    end,
+    ["Fury"] = function()
+      cadet.build_resource_bar("rg", "rage", "curve") 
+    end,
+    ["Nanoseer"] = function()
+      cadet.build_resource_bar("sa", "sanity", "chevron")
+      cadet.build_resource_bar("nn", "nanites", "curve")
+    end,
+    ["Scoundrel"] = function()
+      cadet.build_resource_bar("bl", "bullets", "alpha")
+    end,
+    -- auto-built resources go here
+  }
+  if case[gapi.tracked_class] then case[gapi.tracked_class]() else error("gapi_class_init: class "..gapi.tracked_class.." not yet supported. :(") end
+  cadet.build_ww_bars()
+end
+
+extra_space = "26%"
+remaining_space = "59%"
+
+function cadet.build_resource_bar(sn, ln, bar)
+  cadet.left.status.bars = cadet.left.status.bars or {}
+  cadet.left.status.bars[sn.."_container"] = Geyser.VBox:new({
+    name = "cadet.left.status.bars."..sn.."_container",
+  }, cadet.left.status.resources)
+  cadet.left.status.bars[sn.."_health"] = demonnic.iGauge:new({
+    name = "cadet.left.status.bars."..sn.."_health",
+    fillcolor = "#725a72",
+    emptycolor = "#382c38",
+    bartype = bar,
+  }, cadet.left.status.bars[sn.."_container"])
+  cadet.left.status.bars[sn.."_label"] = Geyser.Label:new({
+    name = "cadet.left.status.bars."..sn.."_label",
+    color = "#07111c",
+    message = "&amp;nbsp;"..ln:upper(),
+  }, cadet.left.status.bars[sn.."_container"])
+  cadet.left.status.bars[sn.."_label"]:setStyleSheet([[
+  background-color: #18222C;
+  border-bottom-left-radius: 11px;
+  border-bottom-right-radius: 11px;
+]])
+end  
+
+function cadet.build_ww_bars()
+  cadet.left.wetwiring = {}
+  cadet.left.wetwiring.container = Geyser.VBox:new({
+    name = "cadet.left.wetwiring.container",
+    x = "5%", y = extra_space,
+    width = "80%",
+    height = remaining_space,
+  }, cadet.left.status.frame)
+  local systems = {"muscular", "internal", "mind", "sensory", "wetwiring",}
+  for _, sys in ipairs(systems) do
+    cadet.left.wetwiring[sys.."_container"] = Geyser.VBox:new({
+      name = "cadet.left.wetwiring."..sys.."_container",
+    }, cadet.left.wetwiring.container)
+    cadet.left.wetwiring[sys.."_label"] = Geyser.Label:new({
+      name = "cadet.left.wetwiring."..sys.."_label",
+      message = sys,
+      color = "#07111c",
+    }, cadet.left.wetwiring[sys.."_container"])
+    cadet.left.wetwiring[sys.."_health"] = demonnic.iGauge:new({
+      name = "cadet.left.wetwiring."..sys.."_health",
+      fillcolor = ww_fc,
+      emptycolor = ww_ec,
+    }, cadet.left.wetwiring[sys.."_container"])
+    cadet.left.wetwiring[sys.."_efficacy"] = demonnic.iGauge:new({
+      name = "cadet.left.wetwiring."..sys.."_efficacy",
+      fillcolor = "#546163",
+      emptycolor = "#252b2c",
+      bartype = "alpha",
+    }, cadet.left.wetwiring[sys.."_container"])
+  end
+end</script>
+					<eventHandlerList>
+						<string>gapi status</string>
+					</eventHandlerList>
+				</Script>
+				<Script isActive="yes" isFolder="no">
+					<name>gmcp_vitals</name>
+					<packageName></packageName>
+					<script>function gmcp_vitals()
+  local case = {
+    ["B.E.A.S.T."] = {"pl plasma"},
+    ["Engineer"] = {"pt parts"},
+    ["Fury"] = {"rg rage"},
+    ["Nanoseer"] = {"sa sanity", "nn nanites"},
+    ["Scoundrel"] = {"bl bullets"},
+  }
+  cadet.left.status.health_bar:update(gapi.me.health/gapi.me.maxhealth)
+  cadet.left.status.health_label:echo(string.format("&amp;nbsp;HEALTH: %s (%s%%)", gapi.me.health, math.floor(gapi.me.health/gapi.me.maxhealth*100)))
+  if not case[gapi.me.class] then error("gmcp_vitals: attempt to update resource for class "..gapi.me.class..", which isn't supported yet :(") end
+  for _, resource in ipairs(case[gapi.me.class]) do
+    local r = string.split(resource, " ")
+    update_resource(r[1], r[2])
+  end
+  local systems = {"wetwiring", "muscular", "internal", "sensory", "mind"}
+  for _, sys in ipairs(systems) do
+    cadet.left.wetwiring[sys.."_health"]:update(tonumber(gapi.me.sys[sys].health))
+    cadet.left.wetwiring[sys.."_efficacy"]:update(tonumber(gapi.me.sys[sys].efficacy))
+  end
+end
+
+function update_resource(sn, ln)
+  local vit = gmcp.Char.Vitals
+  cadet.left.status.bars[sn.."_health"]:update(tonumber(vit[sn])/tonumber(vit["max"..sn]))
+  cadet.left.status.bars[sn.."_label"]:echo("&amp;nbsp;"..ln:upper().." ("..vit["format"..sn]..")")
+  gapi.me[sn] = vit[sn]
+end   </script>
+					<eventHandlerList>
+						<string>gapi vitals</string>
+					</eventHandlerList>
+				</Script>
+			</Script>
+		</ScriptGroup>
+	</ScriptPackage>
+</MudletPackage>
